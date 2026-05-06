@@ -32,3 +32,5 @@ runs/
 # System files
 .DS_Store
 Thumbs.db
+# External downloaded datasets
+external_datasets/
