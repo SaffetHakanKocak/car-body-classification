@@ -1,4 +1,7 @@
+import argparse
 import json
+import sys
+from itertools import islice
 from pathlib import Path
 
 import matplotlib
@@ -13,6 +16,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
+from tqdm import tqdm
 
 from config import (
     BATCH_SIZE,
@@ -35,6 +39,9 @@ from model import create_model
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 EARLY_STOPPING_PATIENCE = 5
+FAST_TEST_EPOCHS = 1
+FAST_TEST_TRAIN_BATCHES = 5
+FAST_TEST_VAL_BATCHES = 2
 
 
 class OrderedImageFolder(datasets.ImageFolder):
@@ -89,13 +96,38 @@ def create_dataloaders():
     return train_loader, val_loader
 
 
-def run_train_epoch(model, dataloader, criterion, optimizer, device):
+def run_train_epoch(
+    model,
+    dataloader,
+    criterion,
+    optimizer,
+    device,
+    epoch,
+    total_epochs,
+    max_batches=None,
+):
     model.train()
     total_loss = 0.0
     correct_count = 0
     sample_count = 0
 
-    for images, labels in dataloader:
+    total_batches = len(dataloader)
+
+    if max_batches is not None:
+        total_batches = min(total_batches, max_batches)
+
+    data_iter = dataloader if max_batches is None else islice(dataloader, max_batches)
+
+    progress_bar = tqdm(
+        data_iter,
+        total=total_batches,
+        desc=f"Training Epoch {epoch}/{total_epochs}",
+        unit="batch",
+        dynamic_ncols=True,
+        file=sys.stdout,
+    )
+
+    for images, labels in progress_bar:
         images = images.to(device)
         labels = labels.to(device)
 
@@ -111,12 +143,24 @@ def run_train_epoch(model, dataloader, criterion, optimizer, device):
         correct_count += (predictions == labels).sum().item()
         sample_count += batch_size
 
+        current_loss = total_loss / sample_count
+        current_acc = correct_count / sample_count
+        progress_bar.set_postfix(loss=f"{current_loss:.4f}", acc=f"{current_acc:.4f}")
+
     avg_loss = total_loss / sample_count
     accuracy = correct_count / sample_count
     return avg_loss, accuracy
 
 
-def run_eval_epoch(model, dataloader, criterion, device):
+def run_eval_epoch(
+    model,
+    dataloader,
+    criterion,
+    device,
+    epoch,
+    total_epochs,
+    max_batches=None,
+):
     model.eval()
     total_loss = 0.0
     correct_count = 0
@@ -124,8 +168,24 @@ def run_eval_epoch(model, dataloader, criterion, device):
     all_labels = []
     all_predictions = []
 
+    total_batches = len(dataloader)
+
+    if max_batches is not None:
+        total_batches = min(total_batches, max_batches)
+
     with torch.no_grad():
-        for images, labels in dataloader:
+        data_iter = dataloader if max_batches is None else islice(dataloader, max_batches)
+
+        progress_bar = tqdm(
+            data_iter,
+            total=total_batches,
+            desc=f"Validation Epoch {epoch}/{total_epochs}",
+            unit="batch",
+            dynamic_ncols=True,
+            file=sys.stdout,
+        )
+
+        for images, labels in progress_bar:
             images = images.to(device)
             labels = labels.to(device)
 
@@ -141,6 +201,10 @@ def run_eval_epoch(model, dataloader, criterion, device):
             all_labels.extend(labels.cpu().tolist())
             all_predictions.extend(predictions.cpu().tolist())
 
+            current_loss = total_loss / sample_count
+            current_acc = correct_count / sample_count
+            progress_bar.set_postfix(loss=f"{current_loss:.4f}", acc=f"{current_acc:.4f}")
+
     avg_loss = total_loss / sample_count
     accuracy = correct_count / sample_count
     macro_f1 = float(
@@ -149,15 +213,19 @@ def run_eval_epoch(model, dataloader, criterion, device):
     return avg_loss, accuracy, macro_f1
 
 
-def save_history(history):
+def save_history(history, file_name="training_history.json"):
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
-    history_path = OUTPUTS_DIR / "training_history.json"
+    history_path = OUTPUTS_DIR / file_name
 
     with history_path.open("w", encoding="utf-8") as file:
         json.dump(history, file, indent=4)
 
 
-def save_curves(history):
+def save_curves(
+    history,
+    loss_file_name="loss_curve.png",
+    accuracy_file_name="accuracy_curve.png",
+):
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
     epochs = [item["epoch"] for item in history]
 
@@ -168,7 +236,7 @@ def save_curves(history):
     plt.ylabel("Loss")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(OUTPUTS_DIR / "loss_curve.png", dpi=150)
+    plt.savefig(OUTPUTS_DIR / loss_file_name, dpi=150)
     plt.close()
 
     plt.figure()
@@ -178,11 +246,22 @@ def save_curves(history):
     plt.ylabel("Accuracy")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(OUTPUTS_DIR / "accuracy_curve.png", dpi=150)
+    plt.savefig(OUTPUTS_DIR / accuracy_file_name, dpi=150)
     plt.close()
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--fast_test",
+        action="store_true",
+        help="Sadece birkac batch ile hizli pipeline testi yapar.",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -194,10 +273,25 @@ def main():
     print(f"Train gorsel sayisi: {len(train_loader.dataset)}")
     print(f"Val gorsel sayisi: {len(val_loader.dataset)}")
 
+    total_epochs = NUM_EPOCHS
+    max_train_batches = None
+    max_val_batches = None
+    pretrained = True
+
+    if args.fast_test:
+        total_epochs = FAST_TEST_EPOCHS
+        max_train_batches = FAST_TEST_TRAIN_BATCHES
+        max_val_batches = FAST_TEST_VAL_BATCHES
+        pretrained = False
+        print("Fast test modu aktif.")
+        print(f"Train batch limiti: {max_train_batches}")
+        print(f"Val batch limiti: {max_val_batches}")
+        print("Fast test modunda best_model.pth ezilmeyecek.")
+
     model = create_model(
         num_classes=NUM_CLASSES,
         dropout_rate=DROPOUT_RATE,
-        pretrained=True,
+        pretrained=pretrained,
     ).to(device)
 
     criterion = nn.CrossEntropyLoss()
@@ -208,12 +302,25 @@ def main():
     epochs_without_improvement = 0
     history = []
 
-    for epoch in range(1, NUM_EPOCHS + 1):
+    for epoch in range(1, total_epochs + 1):
         train_loss, train_accuracy = run_train_epoch(
-            model, train_loader, criterion, optimizer, device
+            model,
+            train_loader,
+            criterion,
+            optimizer,
+            device,
+            epoch,
+            total_epochs,
+            max_batches=max_train_batches,
         )
         val_loss, val_accuracy, val_macro_f1 = run_eval_epoch(
-            model, val_loader, criterion, device
+            model,
+            val_loader,
+            criterion,
+            device,
+            epoch,
+            total_epochs,
+            max_batches=max_val_batches,
         )
 
         scheduler.step(val_macro_f1)
@@ -229,7 +336,7 @@ def main():
         history.append(epoch_info)
 
         print(
-            f"Epoch {epoch:02d}/{NUM_EPOCHS} | "
+            f"Epoch {epoch:02d}/{total_epochs} | "
             f"Train loss: {train_loss:.4f} | "
             f"Val loss: {val_loss:.4f} | "
             f"Train acc: {train_accuracy:.4f} | "
@@ -240,8 +347,10 @@ def main():
         if val_macro_f1 > best_val_f1:
             best_val_f1 = val_macro_f1
             epochs_without_improvement = 0
-            torch.save(model.state_dict(), BEST_MODEL_PATH)
-            print(f"En iyi model kaydedildi: {BEST_MODEL_PATH}")
+
+            if not args.fast_test:
+                torch.save(model.state_dict(), BEST_MODEL_PATH)
+                print(f"En iyi model kaydedildi: {BEST_MODEL_PATH}")
         else:
             epochs_without_improvement += 1
 
@@ -249,10 +358,18 @@ def main():
             print("Early stopping devreye girdi.")
             break
 
-    save_history(history)
-    save_curves(history)
+    if args.fast_test:
+        save_history(history, file_name="training_history_fast_test.json")
+        save_curves(
+            history,
+            loss_file_name="loss_curve_fast_test.png",
+            accuracy_file_name="accuracy_curve_fast_test.png",
+        )
+    else:
+        save_history(history)
+        save_curves(history)
 
-    if Path(BEST_MODEL_PATH).exists():
+    if not args.fast_test and Path(BEST_MODEL_PATH).exists():
         model_size_mb = BEST_MODEL_PATH.stat().st_size / (1024 * 1024)
         print(f"Best model dosya boyutu: {model_size_mb:.2f} MB")
 
