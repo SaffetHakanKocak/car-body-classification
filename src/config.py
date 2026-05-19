@@ -12,6 +12,7 @@ RAW_DATA_DIR = DATASET_DIR / "raw"
 PROCESSED_DATA_DIR = DATASET_DIR / "processed"
 TRAIN_DIR = PROCESSED_DATA_DIR / "train"
 VAL_DIR = PROCESSED_DATA_DIR / "val"
+TEST_DIR = PROCESSED_DATA_DIR / "test"
 
 # Cikti ve model klasorleri
 MODELS_DIR = BASE_DIR / "models"
