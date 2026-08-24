@@ -116,6 +116,33 @@ Sonuç JSON formatında; tahmin edilen sınıf, 1 tabanlı etiket, güven skoru 
 
 Model ağırlıkları ve değerlendirme çıktıları depoya dahil edilmiştir. Yeni bir eğitim çalıştırmadan önce veri klasörlerinin ve ilgili yolların `src/config.py` içindeki ayarlarla uyumlu olduğundan emin olun.
 
+## Model Sonuçları
+
+`outputs_b2_v4` içindeki kayıtlı değerlendirme sonuçlarına göre model, 796 görselden oluşan test setinde aşağıdaki performansı göstermiştir:
+
+| Metrik | Sonuç |
+| --- | ---: |
+| Test Accuracy | **96.98%** |
+| Macro Precision | **97.10%** |
+| Macro Recall | **96.99%** |
+| Macro F1-Score | **97.00%** |
+| En iyi Validation Macro F1 | **98.62%** |
+
+### Sınıf Bazlı Test Sonuçları
+
+| Sınıf | Precision | Recall | F1-Score | Görsel sayısı |
+| --- | ---: | ---: | ---: | ---: |
+| SUV | 0.96 | 0.94 | 0.95 | 100 |
+| VAN | 0.99 | 1.00 | 1.00 | 100 |
+| STATION_WAGON | 0.97 | 1.00 | 0.99 | 100 |
+| MICRO | 0.98 | 0.98 | 0.98 | 96 |
+| OPEN_WHEEL | 1.00 | 1.00 | 1.00 | 100 |
+| SEDAN | 0.99 | 0.90 | 0.94 | 100 |
+| HATCHBACK | 0.88 | 0.95 | 0.91 | 100 |
+| PICK_UP | 1.00 | 0.99 | 0.99 | 100 |
+
+Değerlendirme çıktılarının tamamı için [`outputs_b2_v4/test_metrics.json`](outputs_b2_v4/test_metrics.json) ve [`outputs_b2_v4/test_classification_report.txt`](outputs_b2_v4/test_classification_report.txt) dosyalarına bakabilirsiniz.
+
 ## Lisans ve Veri Kullanımı
 
 Bu depo eğitim/demo amaçlı hazırlanmıştır. Veri setlerinin ve raporda kullanılan görsellerin lisans ve kullanım koşulları, ilgili kaynakların koşullarına tabidir. Bu proje için ayrıca bir lisans tanımlanmamıştır.
