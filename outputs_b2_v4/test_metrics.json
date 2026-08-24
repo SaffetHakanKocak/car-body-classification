@@ -1,0 +1,8 @@
+{
+    "model_name": "efficientnet_b2",
+    "best_val_macro_f1": 0.9861681552719999,
+    "accuracy": 0.9698492462311558,
+    "macro_precision": 0.9709954693856788,
+    "macro_recall": 0.9698958333333333,
+    "macro_f1": 0.9699691195571378
+}

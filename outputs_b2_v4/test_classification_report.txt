@@ -1,0 +1,14 @@
+               precision    recall  f1-score   support
+
+          SUV       0.96      0.94      0.95       100
+          VAN       0.99      1.00      1.00       100
+STATION_WAGON       0.97      1.00      0.99       100
+        MICRO       0.98      0.98      0.98        96
+   OPEN_WHEEL       1.00      1.00      1.00       100
+        SEDAN       0.99      0.90      0.94       100
+    HATCHBACK       0.88      0.95      0.91       100
+      PICK_UP       1.00      0.99      0.99       100
+
+     accuracy                           0.97       796
+    macro avg       0.97      0.97      0.97       796
+ weighted avg       0.97      0.97      0.97       796
